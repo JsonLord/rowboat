@@ -104,6 +104,73 @@ export function buildHttpApp(deps: {
     return next();
   });
 
+  app.get('/health', (c) => c.json({ status: 'ok', service: service.org.name }));
+
+  app.get('/api-docs', (c) =>
+    c.json({
+      title: 'Rowboat Harbor API',
+      description: 'Open-source personal AI assistant server API documentation',
+      endpoints: [
+        {
+          method: 'GET',
+          path: '/health',
+          purpose: 'Health check endpoint for Hugging Face Spaces monitoring',
+          request: 'GET /health',
+          response: { status: 'ok', service: 'Rowboat Labs (dev)' },
+        },
+        {
+          method: 'GET',
+          path: '/api-docs',
+          purpose: 'Documents all available API endpoints',
+          request: 'GET /api-docs',
+          response: 'JSON documentation of available API endpoints',
+        },
+        {
+          method: 'GET',
+          path: '/v1/health',
+          purpose: 'Returns internal server status and organization details',
+          request: 'GET /v1/health',
+          response: { ok: true, org: { name: 'Rowboat Labs', address: 'localhost:7860' } },
+        },
+        {
+          method: 'GET',
+          path: '/v1/me',
+          purpose: 'Get current authenticated member details',
+          request: 'GET /v1/me (Header: Authorization: Bearer <token>)',
+          response: { member: { id: 'ramnique', displayName: 'Ramnique', role: 'admin' } },
+        },
+        {
+          method: 'GET',
+          path: '/v1/spaces',
+          purpose: 'List accessible spaces in the organization',
+          request: 'GET /v1/spaces?includeDirect=true',
+          response: { spaces: [{ id: 'sp_1', name: 'Roadboard' }] },
+        },
+        {
+          method: 'POST',
+          path: '/v1/spaces',
+          purpose: 'Create a new space',
+          request: { name: 'Project Space' },
+          response: { space: { id: 'sp_2', name: 'Project Space' } },
+        },
+        {
+          method: 'GET',
+          path: '/v1/spaces/:spaceId/assets',
+          purpose: 'List assets and files in a space',
+          request: 'GET /v1/spaces/:spaceId/assets',
+          response: { entries: [{ path: 'README.md', id: 'ast_1' }] },
+        },
+        {
+          method: 'POST',
+          path: '/v1/spaces/:spaceId/messages',
+          purpose: 'Post a new message or topic in a space',
+          request: { body: 'Hello team!' },
+          response: { message: { id: 'msg_1', body: 'Hello team!' } },
+        },
+      ],
+    }),
+  );
+
   app.get('/v1/health', (c) => c.json({ ok: true, org: { name: service.org.name, address: service.org.address } }));
 
   app.get(routes.me.path, async (c) => reply(c, routes.me.response, { member: await service.me(actor(c)) }));

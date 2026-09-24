@@ -1,3 +1,9 @@
+---
+title: Rowboat
+sdk: docker
+app_port: 7860
+---
+
 <a href="https://www.youtube.com/watch?v=5AWoGo-L16I" target="_blank" rel="noopener noreferrer">
   <img width="1339" height="607" alt="rowboat-github-2" src="assets/readme-dark/hero-video.png" />
 </a>
