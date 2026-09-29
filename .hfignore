@@ -1,0 +1,8 @@
+.git
+.github
+apps/x
+assets
+docs
+**/node_modules
+**/.tsbuildinfo
+**/dist

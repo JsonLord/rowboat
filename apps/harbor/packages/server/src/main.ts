@@ -2,6 +2,7 @@
 import path from 'node:path';
 import type { AuthDriver } from './auth.js';
 import { OidcAuthDriver } from './auth-oidc.js';
+import { LocalTokenAuthDriver } from './auth-local.js';
 import type { BlobStore } from './blobs.js';
 import { DiskBlobStore } from './blobs-disk.js';
 import { S3BlobStore } from './blobs-s3.js';
@@ -128,8 +129,43 @@ if (process.env.HARBOR_MODE === 'deployment') {
   console.log(`  internal   ${process.env.HARBOR_INTERNAL_KEY ? 'GET /internal/stats (operator key set)' : 'off (set HARBOR_INTERNAL_KEY)'}`);
   console.log(`  listening  :${deployment.port}`);
   process.on('SIGTERM', () => void deployment.close().then(() => process.exit(0)));
+} else if (process.env.HARBOR_MODE === 'single') {
+  await startSingleHarbor();
 } else {
   await startDevHarbor();
+}
+
+async function startSingleHarbor(): Promise<void> {
+  // A public single-owner server must never silently fall back to dev tokens
+  // or an in-memory database when its deployment configuration is incomplete.
+  for (const name of ['HARBOR_ADDRESS', 'HARBOR_LOCAL_TOKEN'] as const) {
+    if (!process.env[name]) throw new Error(`HARBOR_MODE=single requires ${name}`);
+  }
+  if (!process.env.DATABASE_URL && !process.env.PGLITE_DIR) {
+    throw new Error('HARBOR_MODE=single requires DATABASE_URL or PGLITE_DIR');
+  }
+  if (!process.env.BLOBS_DIR && !process.env.BLOBS_S3_BUCKET) {
+    throw new Error('HARBOR_MODE=single requires BLOBS_DIR or BLOBS_S3_BUCKET');
+  }
+  const db = process.env.DATABASE_URL
+    ? postgresDb(process.env.DATABASE_URL, poolOpts)
+    : await (await import('./sql-pglite.js')).pgliteDb(process.env.PGLITE_DIR);
+  const store = new PgStore(db);
+  await store.init();
+  const owner = process.env.HARBOR_OWNER_ID ?? 'owner';
+  const harbor = await startHarbor({
+    port,
+    store,
+    address: process.env.HARBOR_ADDRESS!,
+    orgName: process.env.HARBOR_ORG ?? 'Personal Harbor',
+    auth: new LocalTokenAuthDriver(process.env.HARBOR_LOCAL_TOKEN!, owner),
+    blobs: blobStoreFactory()!('org-default'),
+    seedMembers: [{ id: owner, displayName: process.env.HARBOR_OWNER_NAME ?? 'Owner' }],
+    seedSpaces: [{ name: 'Personal', creator: owner }],
+    ...internal,
+  });
+  console.log(`Harbor (single owner) at ${harbor.url}; public address ${harbor.address}`);
+  process.on('SIGTERM', () => void harbor.close().then(() => process.exit(0)));
 }
 
 async function startDevHarbor(): Promise<void> {
