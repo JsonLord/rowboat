@@ -1,4 +1,4 @@
-import type { Server as HttpServer } from 'node:http';
+import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
 import os from 'node:os';
 import { createAdaptorServer } from '@hono/node-server';
 import { Hono } from 'hono';
@@ -14,6 +14,8 @@ import { createRpcRoutes } from './router.js';
 import { createWorkspaceRoutes } from './workspace-route.js';
 import { createWsHub, type WsHub, type PushChannel } from './ws-hub.js';
 import { setCapabilityTransport } from './capabilities.js';
+import { handleMcpRequest } from './mcp-server.js';
+import { renderDashboardHtml } from './ui.js';
 
 // Assembles the transport: HTTP router + workspace files + WS event hub on
 // one node:http server. Deliberately does NOT boot @x/core — the host (today
@@ -81,6 +83,13 @@ function listenOnce(server: HttpServer, host: string, port: number): Promise<voi
 // cheap defense-in-depth. The set is the machine's own names and addresses.
 export function buildAllowedHosts(): Set<string> {
   const hosts = new Set(['localhost', '127.0.0.1', '[::1]', '::1', os.hostname().toLowerCase()]);
+  const envAllowed = process.env.ROWBOAT_ALLOWED_HOSTS ?? process.env.ALLOWED_HOSTS ?? process.env.HARBOR_ADDRESS ?? process.env.SPACE_HOST;
+  if (envAllowed) {
+    for (const item of envAllowed.split(',')) {
+      const trimmed = item.trim();
+      if (trimmed) hosts.add(trimmed.toLowerCase());
+    }
+  }
   for (const infos of Object.values(os.networkInterfaces())) {
     for (const info of infos ?? []) {
       hosts.add(info.family === 'IPv6' ? `[${info.address.toLowerCase()}]` : info.address);
@@ -91,6 +100,7 @@ export function buildAllowedHosts(): Set<string> {
 
 export function hostAllowed(hostHeader: string | undefined, allowed: Set<string>): boolean {
   if (!hostHeader) return false;
+  if (allowed.has('*')) return true;
   // Strip the port: "name:3220" or "[::1]:3220".
   const host = hostHeader.replace(/:\d+$/, '').toLowerCase();
   return allowed.has(host);
@@ -113,7 +123,7 @@ async function isRowboatServer(port: number): Promise<boolean> {
 export async function createRowboatServer(opts: RowboatServerOptions): Promise<RowboatServer> {
   const config = await loadServerConfig(opts.workDir);
   const key = await loadOrCreateServerKey(opts.workDir);
-  const host = opts.host ?? (config.lanEnabled ? '0.0.0.0' : '127.0.0.1');
+  const host = opts.host ?? process.env.HOST ?? process.env.ROWBOAT_SERVER_HOST ?? (config.lanEnabled || process.env.LAN_ENABLED === 'true' ? '0.0.0.0' : '127.0.0.1');
   const startPort = opts.port ?? config.port;
 
   // Whoever hosts the transport owns core for this workdir — a second host is
@@ -130,18 +140,56 @@ export async function createRowboatServer(opts: RowboatServerOptions): Promise<R
     c.header('x-rowboat-api-version', '0');
   });
 
-  // Unauthenticated on purpose: the phone probes candidate URLs with it
-  // during pairing, before it can prove it holds the key.
+  // Unauthenticated on purpose: web dashboard, health probe, and API docs discovery.
+  app.get('/', (c) => c.html(renderDashboardHtml(opts.serverVersion)));
+
   app.get('/health', (c) =>
-    c.json({ ok: true, name: 'rowboat-server', apiVersion: 0, serverVersion: opts.serverVersion }),
+    c.json({ ok: true, status: 'ok', name: 'rowboat-server', service: 'rowboat-server', apiVersion: 0, serverVersion: opts.serverVersion }),
+  );
+
+  app.get('/api-docs', (c) =>
+    c.json({
+      title: 'Rowboat Server API',
+      description: 'Open-source personal AI assistant server API and MCP endpoints',
+      version: opts.serverVersion,
+      endpoints: [
+        { path: '/health', method: 'GET', description: 'Health check endpoint for monitoring' },
+        { path: '/api-docs', method: 'GET', description: 'API documentation' },
+        { path: '/mcp', method: 'POST/GET', description: 'Model Context Protocol (MCP) server over HTTP' },
+        { path: '/rpc/:channel', method: 'POST', description: 'RPC endpoint for Rowboat channels' },
+        { path: '/workspace/*', method: 'GET/PUT/DELETE', description: 'Workspace file access endpoints' },
+      ],
+    }),
   );
 
   app.use('*', async (c, next) => {
+    const p = c.req.path;
+    if (p === '/' || p === '' || p === '/health' || p === '/api-docs') {
+      return next();
+    }
     const token = extractBearer(c.req.header('authorization'), c.req.query('token'));
     if (!token || !tokenMatches(token, key)) {
       return c.json({ error: { code: 'unauthorized', message: 'missing or invalid bearer token' } }, 401);
     }
     await next();
+  });
+
+  app.all('/mcp', async (c) => {
+    const req = (c.env as { incoming?: IncomingMessage }).incoming;
+    const res = (c.env as { outgoing?: ServerResponse }).outgoing;
+    if (req && res) {
+      const origWriteHead = res.writeHead.bind(res);
+      res.writeHead = function (...args: Parameters<typeof origWriteHead>) {
+        if (!res.headersSent && !res.writableEnded) {
+          return origWriteHead(...args);
+        }
+        return res;
+      } as typeof res.writeHead;
+
+      await handleMcpRequest(req, res, opts.handlers);
+      return c.newResponse(null);
+    }
+    return c.json({ error: { code: 'internal', message: 'HTTP adaptor context missing' } }, 500);
   });
 
   app.route('/', createRpcRoutes(opts.handlers));

@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.7",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@x/core": "workspace:*",
     "@x/shared": "workspace:*",
     "hono": "^4.11.9",

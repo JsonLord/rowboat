@@ -21,7 +21,8 @@ function configPath(workDir: string): string {
 // without touching the workdir's server.json. Explicit opts.port (tests)
 // still wins over this — see createRowboatServer.
 function envPortOverride(): number | undefined {
-  const port = Number(process.env.ROWBOAT_SERVER_PORT);
+  const portStr = process.env.ROWBOAT_SERVER_PORT ?? process.env.PORT;
+  const port = Number(portStr);
   return Number.isInteger(port) && port > 0 ? port : undefined;
 }
 

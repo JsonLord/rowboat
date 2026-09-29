@@ -1,8 +1,8 @@
 # Rowboat Hugging Face Space Deployment Guide
 
-You are a deployment manager for this codebase with the aim of making it run on the huggingface space as outlined in this Agent.md file which you add to the codebase after deployment to inform further agents about tricks and ongoing deployment best practices.
+You are a deployment manager for this codebase with the aim of making `rowboat-server` run on Hugging Face Spaces as outlined in this `Agent.md` file.
 
-start an iterative loop of modifying the codebase, running the deployment script, getting the logs and monitoring them until successful deployment. If nay logs indicate failure, fix these issues in the codebase via code modifications, and redeploy and again monitor the logs.
+Start an iterative loop of modifying the codebase, running the deployment script, getting the logs, and monitoring them until successful deployment. If any logs indicate failure, fix these issues in the codebase via code modifications, redeploy, and monitor the logs.
 
 ## 1. Deployment Configuration
 
@@ -13,11 +13,7 @@ start an iterative loop of modifying the codebase, running the deployment script
 - **Frontend Port:** `7860` (mandatory for all Hugging Face Spaces)
 
 ### Deployment Method
-Choose the correct SDK based on the app type based on the codebase language:
-
-- **Gradio SDK** — for Gradio applications
-- **Streamlit SDK** — for Streamlit applications
-- **Docker SDK** — for all other applications (recommended default for flexibility)
+- **Docker SDK** — builds and runs `rowboat-server` (headless edition from `apps/x/apps/server`).
 
 ### HF Token
 - The environment variable **`HF_TOKEN` will always be provided at execution time**.
@@ -25,7 +21,7 @@ Choose the correct SDK based on the app type based on the codebase language:
 - All monitoring and log‑streaming commands rely on `$HF_TOKEN`.
 
 ### Required Files
-- `Dockerfile` (or `app.py` for Gradio/Streamlit SDKs)
+- `Dockerfile`
 - `README.md` with Hugging Face YAML frontmatter:
   ```yaml
   ---
@@ -49,142 +45,73 @@ Every deployment **must** expose:
   - Required for Hugging Face to transition the Space from *starting* → *running*.
 
 - **`/api-docs`**
-  - Documents **all** available API endpoints.
-  - Must be reachable at:
-    `https://Leon4gr45-rowboat.hf.space/api-docs`
+  - Documents **all** available API endpoints and MCP capabilities.
+  - Reachable at `https://Leon4gr45-rowboat.hf.space/api-docs`
 
 ### Functional Endpoints
 
-### /health
+### `/health`
 - Method: GET
 - Purpose: Health check endpoint for Hugging Face Spaces monitoring
 - Request: `GET /health`
 - Response:
 ```json
 {
+  "ok": true,
   "status": "ok",
-  "service": "Rowboat Labs (dev)"
+  "name": "rowboat-server",
+  "service": "rowboat-server",
+  "apiVersion": 0,
+  "serverVersion": "0.1.0"
 }
 ```
 
-### /api-docs
+### `/api-docs`
 - Method: GET
 - Purpose: Returns API documentation for all endpoints
 - Request: `GET /api-docs`
 - Response:
 ```json
 {
-  "title": "Rowboat Harbor API",
-  "description": "Open-source personal AI assistant server API documentation",
+  "title": "Rowboat Server API",
+  "description": "Open-source personal AI assistant server API and MCP endpoints",
+  "version": "0.1.0",
   "endpoints": [...]
 }
 ```
 
-### /v1/health
-- Method: GET
-- Purpose: Returns server status and organization info
-- Request: `GET /v1/health`
-- Response:
-```json
-{
-  "ok": true,
-  "org": {
-    "name": "Rowboat Labs",
-    "address": "localhost:7860"
-  }
-}
-```
+### `/mcp`
+- Method: POST / GET
+- Purpose: Model Context Protocol (MCP) server over HTTP (Streamable HTTP transport)
+- Request: MCP JSON-RPC over HTTP
+- Connect with any MCP client via Streamable HTTP at `https://Leon4gr45-rowboat.hf.space/mcp`
+- Available MCP tools include:
+  - `rowboat_list_projects`
+  - `rowboat_create_session`
+  - `rowboat_send_message`
+  - `rowboat_get_session`
+  - `rowboat_list_sessions`
+  - `rowboat_read_file`
+  - `rowboat_write_file`
+  - `rowboat_list_files`
+  - `rowboat_search`
+  - `rowboat_list_mcp_tools`
+  - `rowboat_execute_mcp_tool`
 
-### /v1/me
-- Method: GET
-- Purpose: Get current authenticated member details
-- Request: `GET /v1/me` (Header: `Authorization: Bearer <token>`)
-- Response:
-```json
-{
-  "member": {
-    "id": "ramnique",
-    "displayName": "Ramnique",
-    "role": "admin"
-  }
-}
-```
-
-### /v1/spaces
-- Method: GET
-- Purpose: List accessible spaces
-- Request: `GET /v1/spaces?includeDirect=true`
-- Response:
-```json
-{
-  "spaces": [
-    {
-      "id": "sp_1",
-      "name": "Roadboard"
-    }
-  ]
-}
-```
-
-### /v1/spaces
+### `/rpc/:channel`
 - Method: POST
-- Purpose: Create a new space
-- Request:
-```json
-{
-  "name": "New Space"
-}
-```
-- Response:
-```json
-{
-  "space": {
-    "id": "sp_2",
-    "name": "New Space"
-  }
-}
-```
+- Purpose: RPC endpoint for Rowboat channels (e.g., `sessions:sendMessage`, `workspace:readFile`)
+- Request: `POST /rpc/sessions:list` (Header: `Authorization: Bearer <token>`)
 
-### /v1/spaces/:spaceId/assets
-- Method: GET
-- Purpose: List assets in a space
-- Request: `GET /v1/spaces/:spaceId/assets`
-- Response:
-```json
-{
-  "entries": [
-    {
-      "path": "README.md",
-      "id": "ast_1"
-    }
-  ]
-}
-```
-
-### /v1/spaces/:spaceId/messages
-- Method: POST
-- Purpose: Post a message or topic in a space
-- Request:
-```json
-{
-  "body": "Hello team!"
-}
-```
-- Response:
-```json
-{
-  "message": {
-    "id": "msg_1",
-    "body": "Hello team!"
-  }
-}
-```
+### `/workspace/*`
+- Method: GET / PUT / DELETE
+- Purpose: Workspace file operations (reading, writing, deleting files)
 
 ---
 
 ## 3. Deployment Workflow
 
-Precondition: Use the huggingface hub cli hf to check that the space is empty of files nd delete any which are still in there and not belonging to the project to be uploaded
+Precondition: Use the Hugging Face Hub CLI (`hf`) to check that the space is ready for uploading.
 
 ### Standard Deployment Command
 After any code change, run:
@@ -204,4 +131,4 @@ Get run logs (SSE) once the build logs succeed:
 curl -N -H "Authorization: Bearer $HF_TOKEN" "https://huggingface.co/api/spaces/Leon4gr45/rowboat/logs/run"
 ```
 
-After 300 seconds to see if the deployment has been successful, and if not, fix the errors of deployment, and redeploy and monitor in a cycle until the space is running and reacts to the api endpoints you created.
+After 300 seconds to see if the deployment has been successful, and if not, fix the errors of deployment, and redeploy and monitor in a cycle until the space is running and reacts to the API endpoints.
