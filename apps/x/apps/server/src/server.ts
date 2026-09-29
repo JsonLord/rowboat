@@ -15,6 +15,7 @@ import { createWorkspaceRoutes } from './workspace-route.js';
 import { createWsHub, type WsHub, type PushChannel } from './ws-hub.js';
 import { setCapabilityTransport } from './capabilities.js';
 import { handleMcpRequest } from './mcp-server.js';
+import { renderDashboardHtml } from './ui.js';
 
 // Assembles the transport: HTTP router + workspace files + WS event hub on
 // one node:http server. Deliberately does NOT boot @x/core — the host (today
@@ -139,7 +140,9 @@ export async function createRowboatServer(opts: RowboatServerOptions): Promise<R
     c.header('x-rowboat-api-version', '0');
   });
 
-  // Unauthenticated on purpose: health probe and API docs discovery.
+  // Unauthenticated on purpose: web dashboard, health probe, and API docs discovery.
+  app.get('/', (c) => c.html(renderDashboardHtml(opts.serverVersion)));
+
   app.get('/health', (c) =>
     c.json({ ok: true, status: 'ok', name: 'rowboat-server', service: 'rowboat-server', apiVersion: 0, serverVersion: opts.serverVersion }),
   );
@@ -160,7 +163,8 @@ export async function createRowboatServer(opts: RowboatServerOptions): Promise<R
   );
 
   app.use('*', async (c, next) => {
-    if (c.req.path === '/health' || c.req.path === '/api-docs') {
+    const p = c.req.path;
+    if (p === '/' || p === '' || p === '/health' || p === '/api-docs') {
       return next();
     }
     const token = extractBearer(c.req.header('authorization'), c.req.query('token'));

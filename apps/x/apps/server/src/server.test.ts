@@ -128,6 +128,14 @@ describe('rowboat-server transport', () => {
     headers: { ...(init?.headers as Record<string, string>), authorization: `Bearer ${server.key}` },
   });
 
+  it('serves dashboard UI on GET / unauthenticated', async () => {
+    const res = await fetch(`${base}/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    const html = await res.text();
+    expect(html).toContain('Rowboat Server');
+  });
+
   it('serves /health unauthenticated', async () => {
     const res = await fetch(`${base}/health`);
     expect(res.status).toBe(200);
