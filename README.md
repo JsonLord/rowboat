@@ -350,6 +350,31 @@ In the app, open the Spaces dialog, choose *Add a dev server*, and point it at `
 | `BLOBS_DIR` or `BLOBS_S3_BUCKET` | Where uploads go: local disk, or any S3-compatible bucket (`BLOBS_S3_ENDPOINT`, `BLOBS_S3_REGION`). |
 | `PORT` | Defaults to 4272. |
 
+**Single-owner self-hosting without an external login provider.** Set
+`HARBOR_MODE=single`, `HARBOR_ADDRESS` to the public hostname (without
+`https://`), and `HARBOR_LOCAL_TOKEN` to a private random key of at least
+32 characters. Set either `DATABASE_URL` or `PGLITE_DIR`, plus `BLOBS_DIR`
+or S3 blob storage. The directory paths must live on persistent storage.
+This mode seeds one owner and a Personal space; it accepts only that owner's
+key. Generate a key with `openssl rand -hex 32` and supply it as a deployment
+secret, never in the Dockerfile or repository. In the desktop Rowboat app,
+use **Spaces → Add a dev server**, enter `https://<HARBOR_ADDRESS>` and paste
+the key into the **Member id** field. The app prefixes it with `dev-` on
+the wire; the server maps it to the owner. After that, the landing page's
+**Open in Rowboat** button opens the saved server in the desktop app.
+
+For the Hugging Face Space in this repository, the Dockerfile sets the
+address and storage paths to `leon4gr45-rowboat.hf.space` and `/data`.
+Attach a private, read-write Storage Bucket at `/data` and configure
+`HARBOR_LOCAL_TOKEN` as a Space secret before deploying this image.
+A missing key or storage directory setting causes startup to fail rather
+than exposing dev auth. The server cannot detect an unmounted `/data`;
+without the bucket, its data will disappear on restart. For databases
+where durability matters, a Postgres `DATABASE_URL` is the safer option
+until PGlite has been verified on the bucket mount.
+Anyone with the key can act as the owner; this mode is for one person,
+not separate team accounts.
+
 The wire contract between Harbor and everything that talks to it is the `@rowboat/spaces-protocol` package; [`apps/harbor/CONTRACT.md`](apps/harbor/CONTRACT.md) is its narrative, including the merge semantics, the invite ceremony, and what is deliberately still v0. Expect breaking changes while we dogfood.
 
 ## Bring any agent to a Space

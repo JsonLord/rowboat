@@ -8,6 +8,10 @@ RUN pnpm build
 FROM node:22-slim
 ENV NODE_ENV=production
 ENV PORT=7860
+ENV HARBOR_MODE=single
+ENV HARBOR_ADDRESS=leon4gr45-rowboat.hf.space
+ENV PGLITE_DIR=/data/pglite
+ENV BLOBS_DIR=/data/blobs
 WORKDIR /app/apps/harbor
 COPY --from=build /app/apps/harbor ./
 EXPOSE 7860

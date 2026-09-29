@@ -9,8 +9,8 @@ import type { SqlDb, SqlExecutor } from './sql.js';
 // reproduce a two-connection race — that needs a real server). main.ts loads
 // this by dynamic import on the dev path only; deployment mode never touches it.
 
-export async function pgliteDb(): Promise<SqlDb> {
-  const db = new PGlite();
+export async function pgliteDb(dataDir?: string): Promise<SqlDb> {
+  const db = new PGlite(dataDir);
   await db.waitReady;
   const executor = (q: PGlite | Parameters<Parameters<PGlite['transaction']>[0]>[0]): SqlExecutor => ({
     async query<R>(text: string, params?: unknown[]): Promise<R[]> {
