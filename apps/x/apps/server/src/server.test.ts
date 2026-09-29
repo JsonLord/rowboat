@@ -135,6 +135,36 @@ describe('rowboat-server transport', () => {
     expect(res.headers.get('x-rowboat-api-version')).toBe('0');
   });
 
+  it('serves /api-docs unauthenticated', async () => {
+    const res = await fetch(`${base}/api-docs`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { title?: string; endpoints?: unknown[] };
+    expect(body.title).toBe('Rowboat Server API');
+    expect(Array.isArray(body.endpoints)).toBe(true);
+  });
+
+  it('serves /mcp endpoint for listing tools', async () => {
+    const res = await fetch(
+      `${base}/mcp`,
+      authed({
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'accept': 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/list',
+          params: {},
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { result?: { tools: Array<{ name: string }> } };
+    expect(body.result?.tools.some((t) => t.name === 'rowboat_list_sessions')).toBe(true);
+  });
+
   it('rejects rpc without a bearer token', async () => {
     const res = await fetch(`${base}/rpc/sessions:list`, { method: 'POST' });
     expect(res.status).toBe(401);

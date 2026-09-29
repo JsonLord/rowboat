@@ -363,17 +363,15 @@ the key into the **Member id** field. The app prefixes it with `dev-` on
 the wire; the server maps it to the owner. After that, the landing page's
 **Open in Rowboat** button opens the saved server in the desktop app.
 
-For the Hugging Face Space in this repository, the Dockerfile sets the
-address and storage paths to `leon4gr45-rowboat.hf.space` and `/data`.
-Attach a private, read-write Storage Bucket at `/data` and configure
-`HARBOR_LOCAL_TOKEN` as a Space secret before deploying this image.
-A missing key or storage directory setting causes startup to fail rather
-than exposing dev auth. The server cannot detect an unmounted `/data`;
-without the bucket, its data will disappear on restart. For databases
-where durability matters, a Postgres `DATABASE_URL` is the safer option
-until PGlite has been verified on the bucket mount.
-Anyone with the key can act as the owner; this mode is for one person,
-not separate team accounts.
+For the Hugging Face Space in this repository, the Dockerfile builds and runs
+`rowboat-server` listening on port `7860`. Attach a private, read-write Storage
+Bucket at `/data` before deploying this image. The server exposes `/health` for Space health checks, `/api-docs` for API discovery, `/mcp` for Streamable HTTP MCP server integrations, `/rpc/:channel` for IPC RPC channels, and `/workspace/*` for file access.
+
+To connect to your Rowboat Space as an MCP server via HTTP (for example with Claude Code):
+
+```bash
+claude mcp add --transport http rowboat https://<your-space>.hf.space/mcp
+```
 
 The wire contract between Harbor and everything that talks to it is the `@rowboat/spaces-protocol` package; [`apps/harbor/CONTRACT.md`](apps/harbor/CONTRACT.md) is its narrative, including the merge semantics, the invite ceremony, and what is deliberately still v0. Expect breaking changes while we dogfood.
 
